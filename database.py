@@ -1,15 +1,17 @@
-import sqlite3
-from datetime import datetime
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
+load_dotenv()
 
 class Database:
-    def __init__(self, db_path="tennis_booking.db"):
-        self.db_path = db_path
+    def __init__(self):
+        self.database_url = os.getenv('DATABASE_URL')
         self.init_database()
 
     def get_connection(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
         return conn
 
     def init_database(self):
@@ -19,22 +21,22 @@ class Database:
         # Таблица пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
+                user_id BIGINT PRIMARY KEY,
                 first_name TEXT NOT NULL,
                 username TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
         # Таблица записей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
                 court_type TEXT NOT NULL,
                 date TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, date),
                 UNIQUE(court_type, date, time_slot)
             )
@@ -42,7 +44,6 @@ class Database:
 
         conn.commit()
         conn.close()
-
 
 # Создаем базу данных
 db = Database()
