@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware  # <-- ДОБАВЬ ЭТО
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import database
 import os
@@ -11,7 +11,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 
 app = FastAPI(title="Tennis Court Booking")
 
-# ДОБАВЬ CORS ДЛЯ TELEGRAM
+# Добавляем CORS для Telegram
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,7 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def generate_time_slots():
     slots = []
     for hour in range(6, 24):
@@ -28,7 +27,6 @@ def generate_time_slots():
         end = f"{(hour + 1):02d}:00"
         slots.append(f"{start}-{end}")
     return slots
-
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
@@ -74,7 +72,31 @@ async def read_root():
 
         <script>
             let currentCourt = 'rubber';
-            let currentUser = { id: 123456, first_name: 'Тестовый пользователь' };
+            let currentUser = null;
+
+            // Получаем данные пользователя из Telegram
+            function initTelegramUser() {
+                if (window.Telegram && Telegram.WebApp) {
+                    const tg = Telegram.WebApp;
+                    tg.expand(); // Раскрываем на весь экран
+                    
+                    const user = tg.initDataUnsafe?.user;
+                    if (user) {
+                        currentUser = {
+                            id: user.id,
+                            first_name: user.first_name || 'Пользователь',
+                            username: user.username || ''
+                        };
+                        console.log('User:', currentUser);
+                    } else {
+                        // Если нет данных пользователя, используем тестовые (для разработки)
+                        currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Гость' };
+                    }
+                } else {
+                    // Для браузера (разработка)
+                    currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Гость' };
+                }
+            }
 
             function showTab(tabName) {
                 document.getElementById('booking-tab').style.display = 'none';
@@ -117,6 +139,11 @@ async def read_root():
             }
 
             async function bookSlot(slot) {
+                if (!currentUser) {
+                    alert('Пользователь не определен');
+                    return;
+                }
+
                 if (!confirm('Записаться на ' + slot.time_slot + '?')) return;
 
                 const response = await fetch('/api/book', {
@@ -132,11 +159,20 @@ async def read_root():
                 });
 
                 const result = await response.json();
-                alert(result.message);
-                loadSlots();
+                if (result.success) {
+                    alert('Успешно записаны!');
+                    loadSlots();
+                } else {
+                    alert('Ошибка: ' + result.detail);
+                }
             }
 
             async function loadMyBookings() {
+                if (!currentUser) {
+                    alert('Пользователь не определен');
+                    return;
+                }
+
                 const response = await fetch('/api/my-bookings?user_id=' + currentUser.id);
                 const bookings = await response.json();
 
@@ -166,15 +202,17 @@ async def read_root():
                 loadMyBookings();
             }
 
-            // Устанавливаем сегодняшнюю дату по умолчанию
-            document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
-            loadSlots();
+            // Инициализация при загрузке
+            document.addEventListener('DOMContentLoaded', function() {
+                initTelegramUser();
+                document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
+                loadSlots();
+            });
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content)
-
 
 # Остальной код API оставляем как был
 @app.get("/api/slots")
@@ -219,7 +257,6 @@ async def get_slots(date: str = Query(...)):
     conn.close()
     return slots
 
-
 @app.post("/api/book")
 async def create_booking(booking_data: dict):
     conn = database.db.get_connection()
@@ -258,7 +295,6 @@ async def create_booking(booking_data: dict):
 
     return {"success": True, "message": "Запись успешно создана!"}
 
-
 @app.get("/api/my-bookings")
 async def get_my_bookings(user_id: int = Query(...)):
     conn = database.db.get_connection()
@@ -275,7 +311,6 @@ async def get_my_bookings(user_id: int = Query(...)):
     conn.close()
 
     return [dict(booking) for booking in bookings]
-
 
 @app.delete("/api/booking/{booking_id}")
 async def cancel_booking(booking_id: int, user_id: int = Query(...)):
@@ -296,8 +331,6 @@ async def cancel_booking(booking_id: int, user_id: int = Query(...)):
 
     return {"success": True, "message": "Запись отменена"}
 
-
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
