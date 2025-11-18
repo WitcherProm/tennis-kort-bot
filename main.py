@@ -159,22 +159,23 @@ async def read_root():
                         
                         console.log('User initialized and saved:', currentUser);
                     } else {
-                        // Если нет данных пользователя, создаём постоянного тестового
-                        createPersistentTestUser();
+                        // Если нет данных пользователя, но мы в Telegram WebApp
+                        document.getElementById('user-name').textContent = 'Telegram Пользователь';
+                        document.getElementById('user-info').style.display = 'block';
+                        console.log('No user data in Telegram WebApp');
                     }
                 } else {
-                    // Не в Telegram - создаём постоянного тестового пользователя
-                    createPersistentTestUser();
+                    // Не в Telegram - создаём тестового пользователя только если нет сохранённого
+                    if (!savedUser) {
+                        createTestUser();
+                    }
                 }
             }
 
-            function createPersistentTestUser() {
-                // Создаём постоянного тестового пользователя
-                const testUserId = localStorage.getItem('testUserId') || Math.floor(Math.random() * 1000000);
-                localStorage.setItem('testUserId', testUserId);
-                
+            function createTestUser() {
+                // Создаём тестового пользователя только для демонстрации
                 currentUser = { 
-                    id: parseInt(testUserId), 
+                    id: Math.floor(Math.random() * 1000000), 
                     first_name: 'Тестовый Пользователь' 
                 };
                 
@@ -183,12 +184,13 @@ async def read_root():
                 
                 document.getElementById('user-name').textContent = 'Тестовый Пользователь';
                 document.getElementById('user-info').style.display = 'block';
-                console.log('Persistent test user initialized:', currentUser);
+                console.log('Test user created:', currentUser);
             }
 
             function resetUser() {
                 localStorage.removeItem('telegramUser');
-                localStorage.removeItem('testUserId');
+                currentUser = null;
+                document.getElementById('user-info').style.display = 'none';
                 alert('Данные пользователя сброшены. Перезагрузите страницу.');
                 location.reload();
             }
