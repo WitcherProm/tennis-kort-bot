@@ -77,290 +77,358 @@ async def read_root():
                 margin-bottom: 15px;
                 border-left: 4px solid #007bff;
             }
+            .loading { 
+                display: none;
+                text-align: center; 
+                padding: 20px; 
+                color: #666; 
+            }
+            .error { 
+                display: none;
+                background: #ffebee; 
+                color: #c62828; 
+                padding: 10px; 
+                border-radius: 5px; 
+                margin: 10px 0; 
+            }
         </style>
     </head>
     <body>
-        <h1>🎾 Запись на теннисный корт</h1>
-        
-        <div id="user-info" class="user-info" style="display:none;">
-            Добро пожаловать, <span id="user-name">Гость</span>!
-            <button onclick="resetUser()" style="margin-left: 10px; font-size: 12px;">Сбросить</button>
+        <div id="loading" class="loading">
+            <h2>🎾 Загружаем расписание...</h2>
+            <p>Пожалуйста, подождите</p>
         </div>
 
-        <div class="tabs">
-            <div class="tab active" onclick="showTab('booking')">Записаться</div>
-            <div class="tab" onclick="showTab('my-bookings')">Мои записи</div>
-        </div>
-
-        <div id="booking-tab">
-            <h3>Выберите дату:</h3>
-            <input type="date" id="date-picker" onchange="loadSlots()">
-
-            <h3>Выберите корт:</h3>
-            <div class="court-buttons">
-                <button id="court-rubber" class="court-button active" onclick="selectCourt('rubber')">Резиновый</button>
-                <button id="court-hard" class="court-button" onclick="selectCourt('hard')">Хард</button>
+        <div id="content" style="display:none;">
+            <h1>🎾 Запись на теннисный корт</h1>
+            
+            <div id="user-info" class="user-info" style="display:none;">
+                Добро пожаловать, <span id="user-name">Гость</span>!
+                <button onclick="resetUser()" style="margin-left: 10px; font-size: 12px;">Сбросить</button>
             </div>
 
-            <div id="slots-container"></div>
+            <div id="error-message" class="error"></div>
+
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('booking')">Записаться</div>
+                <div class="tab" onclick="showTab('my-bookings')">Мои записи</div>
+            </div>
+
+            <div id="booking-tab">
+                <h3>Выберите дату:</h3>
+                <input type="date" id="date-picker" onchange="loadSlots()">
+
+                <h3>Выберите корт:</h3>
+                <div class="court-buttons">
+                    <button id="court-rubber" class="court-button active" onclick="selectCourt('rubber')">Резиновый</button>
+                    <button id="court-hard" class="court-button" onclick="selectCourt('hard')">Хард</button>
+                </div>
+
+                <div id="slots-container"></div>
+            </div>
+
+            <div id="my-bookings-tab" style="display:none;">
+                <h3>Мои записи:</h3>
+                <div id="bookings-list"></div>
+            </div>
         </div>
 
-        <div id="my-bookings-tab" style="display:none;">
-            <h3>Мои записи:</h3>
-            <div id="bookings-list"></div>
-        </div>
+        <script>
+            let currentCourt = 'rubber';
+            let currentUser = null;
+            let isInitialized = false;
 
-                        <script>
-                    let currentCourt = 'rubber';
-                    let currentUser = null;
+            function showLoading() {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('content').style.display = 'none';
+            }
+
+            function hideLoading() {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+            }
+
+            function showError(message) {
+                const errorDiv = document.getElementById('error-message');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                setTimeout(() => errorDiv.style.display = 'none', 5000);
+            }
+
+            async function initTelegramUser() {
+                console.log('=== INIT TELEGRAM USER ===');
                 
-                    function initTelegramUser() {
-                        console.log('=== INIT TELEGRAM USER ===');
+                try {
+                    // Быстрая инициализация - сначала проверяем localStorage
+                    const savedUser = localStorage.getItem('telegramUser');
+                    if (savedUser) {
+                        currentUser = JSON.parse(savedUser);
+                        console.log('📁 User from localStorage:', currentUser);
+                        showUserInfo(currentUser);
+                        return true;
+                    }
+                    
+                    // Проверяем Telegram WebApp (быстрая проверка)
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        console.log('✅ Telegram WebApp detected');
+                        const tg = window.Telegram.WebApp;
                         
-                        // Пробуем получить пользователя из localStorage
-                        const savedUser = localStorage.getItem('telegramUser');
-                        if (savedUser) {
-                            currentUser = JSON.parse(savedUser);
-                            console.log('📁 User from localStorage:', currentUser);
+                        // Быстрая инициализация
+                        tg.ready();
+                        
+                        // Проверяем пользователя без долгих операций
+                        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                            const user = tg.initDataUnsafe.user;
+                            console.log('👤 User from Telegram:', user);
+                            
+                            currentUser = {
+                                id: user.id,
+                                first_name: user.first_name || 'Telegram User',
+                                username: user.username || '',
+                                last_name: user.last_name || '',
+                                language_code: user.language_code || 'ru'
+                            };
+                            
+                            localStorage.setItem('telegramUser', JSON.stringify(currentUser));
                             showUserInfo(currentUser);
-                            return;
-                        }
-                        
-                        // Пробуем получить данные из Telegram WebApp
-                        if (window.Telegram && window.Telegram.WebApp) {
-                            console.log('✅ Telegram WebApp detected');
-                            const tg = window.Telegram.WebApp;
-                            
-                            tg.ready();
-                            tg.expand();
-                            
-                            console.log('📊 initData:', tg.initData);
-                            console.log('📊 initDataUnsafe:', tg.initDataUnsafe);
-                            
-                            // Пробуем разные способы получения пользователя
-                            let user = null;
-                            
-                            // Способ 1: из initDataUnsafe
-                            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                                user = tg.initDataUnsafe.user;
-                                console.log('👤 User from initDataUnsafe:', user);
-                            }
-                            
-                            // Способ 2: парсим initData
-                            if (!user && tg.initData) {
-                                const params = new URLSearchParams(tg.initData);
-                                const userParam = params.get('user');
-                                if (userParam) {
-                                    try {
-                                        user = JSON.parse(decodeURIComponent(userParam));
-                                        console.log('👤 User from initData:', user);
-                                    } catch (e) {
-                                        console.error('Error parsing user from initData:', e);
-                                    }
-                                }
-                            }
-                            
-                            // Способ 3: получаем из startParam
-                            if (!user) {
-                                const startParam = tg.startParam;
-                                console.log('🔗 Start param:', startParam);
-                            }
-                            
-                            if (user && user.id) {
-                                currentUser = {
-                                    id: user.id,
-                                    first_name: user.first_name || 'Telegram User',
-                                    username: user.username || '',
-                                    last_name: user.last_name || '',
-                                    language_code: user.language_code || 'ru',
-                                    is_bot: user.is_bot || false
-                                };
-                                
-                                localStorage.setItem('telegramUser', JSON.stringify(currentUser));
-                                console.log('✅ Telegram user saved:', currentUser);
-                                showUserInfo(currentUser);
-                                return;
-                            } else {
-                                console.log('❌ No user data found in Telegram WebApp');
-                                // Показываем что мы в Telegram но без данных пользователя
-                                createTelegramGuest();
-                                return;
-                            }
-                        }
-                        
-                        // Если не в Telegram - обычный гость
-                        console.log('❌ Not in Telegram WebApp');
-                        createGuestUser();
-                    }
-                
-                    function createTelegramGuest() {
-                        console.log('👤 Creating Telegram guest user');
-                        currentUser = { 
-                            id: Math.floor(Math.random() * 1000000), 
-                            first_name: 'Telegram Гость'
-                        };
-                        localStorage.setItem('telegramUser', JSON.stringify(currentUser));
-                        showUserInfo(currentUser);
-                    }
-                
-                    function createGuestUser() {
-                        console.log('👤 Creating regular guest user');
-                        currentUser = { 
-                            id: Math.floor(Math.random() * 1000000), 
-                            first_name: 'Гость'
-                        };
-                        localStorage.setItem('telegramUser', JSON.stringify(currentUser));
-                        showUserInfo(currentUser);
-                    }
-                
-                    function showUserInfo(user) {
-                        const userName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
-                        document.getElementById('user-name').textContent = userName;
-                        document.getElementById('user-info').style.display = 'block';
-                        
-                        console.log(`👤 Displaying user: ${userName}, ID: ${user.id}`);
-                    }
-                
-                    function resetUser() {
-                        localStorage.removeItem('telegramUser');
-                        currentUser = null;
-                        document.getElementById('user-info').style.display = 'none';
-                        setTimeout(() => location.reload(), 100);
-                    }
-                
-                    // Остальные функции без изменений
-                    function showTab(tabName) {
-                        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-                        event.target.classList.add('active');
-                        
-                        document.getElementById('booking-tab').style.display = 'none';
-                        document.getElementById('my-bookings-tab').style.display = 'none';
-                        document.getElementById(tabName + '-tab').style.display = 'block';
-                
-                        if (tabName === 'my-bookings') {
-                            loadMyBookings();
+                            return true;
                         }
                     }
+                    
+                    // Если не нашли пользователя - создаем гостя
+                    console.log('👤 Creating guest user');
+                    currentUser = { 
+                        id: Math.floor(Math.random() * 1000000), 
+                        first_name: 'Гость'
+                    };
+                    localStorage.setItem('telegramUser', JSON.stringify(currentUser));
+                    showUserInfo(currentUser);
+                    return true;
+                    
+                } catch (error) {
+                    console.error('Error initializing user:', error);
+                    // В случае ошибки всё равно создаем гостя
+                    currentUser = { 
+                        id: Math.floor(Math.random() * 1000000), 
+                        first_name: 'Гость'
+                    };
+                    showUserInfo(currentUser);
+                    return true;
+                }
+            }
+
+            function showUserInfo(user) {
+                try {
+                    const userName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+                    document.getElementById('user-name').textContent = userName;
+                    document.getElementById('user-info').style.display = 'block';
+                    console.log(`👤 User: ${userName}`);
+                } catch (error) {
+                    console.error('Error showing user info:', error);
+                }
+            }
+
+            function resetUser() {
+                localStorage.removeItem('telegramUser');
+                currentUser = null;
+                document.getElementById('user-info').style.display = 'none';
+                setTimeout(() => location.reload(), 100);
+            }
+
+            async function initializeApp() {
+                showLoading();
+                console.log('🚀 Initializing app...');
                 
-                    function selectCourt(court) {
-                        currentCourt = court;
-                        document.getElementById('court-rubber').classList.remove('active');
-                        document.getElementById('court-hard').classList.remove('active');
-                        document.getElementById('court-' + court).classList.add('active');
-                        loadSlots();
-                    }
+                try {
+                    // Инициализируем пользователя
+                    await initTelegramUser();
+                    
+                    // Устанавливаем сегодняшнюю дату
+                    document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
+                    
+                    // Загружаем слоты
+                    await loadSlots();
+                    
+                    // Показываем интерфейс
+                    hideLoading();
+                    isInitialized = true;
+                    console.log('✅ App initialized successfully');
+                    
+                } catch (error) {
+                    console.error('❌ App initialization failed:', error);
+                    hideLoading();
+                    showError('Ошибка загрузки. Пожалуйста, обновите страницу.');
+                }
+            }
+
+            function showTab(tabName) {
+                if (!isInitialized) return;
                 
-                    async function loadSlots() {
-                        const date = document.getElementById('date-picker').value;
-                        if (!date) return;
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                event.target.classList.add('active');
                 
-                        const response = await fetch('/api/slots?date=' + date);
-                        const slots = await response.json();
+                document.getElementById('booking-tab').style.display = 'none';
+                document.getElementById('my-bookings-tab').style.display = 'none';
+                document.getElementById(tabName + '-tab').style.display = 'block';
+
+                if (tabName === 'my-bookings') {
+                    loadMyBookings();
+                }
+            }
+
+            function selectCourt(court) {
+                if (!isInitialized) return;
                 
-                        const container = document.getElementById('slots-container');
-                        container.innerHTML = '<h3>Доступные слоты:</h3>';
-                        
-                        const grid = document.createElement('div');
-                        grid.className = 'slots-grid';
+                currentCourt = court;
+                document.getElementById('court-rubber').classList.remove('active');
+                document.getElementById('court-hard').classList.remove('active');
+                document.getElementById('court-' + court).classList.add('active');
+                loadSlots();
+            }
+
+            async function loadSlots() {
+                if (!isInitialized) return;
                 
-                        const courtSlots = slots
-                            .filter(slot => slot.court_type === currentCourt)
-                            .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
-                
-                        courtSlots.forEach(slot => {
-                            const slotElement = document.createElement('div');
-                            slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
-                            slotElement.innerHTML = slot.time_slot.replace('-', '<br>') + 
-                                (slot.is_available ? '<br><small>Свободно</small>' : '<br><small>Занято: ' + slot.booked_by + '</small>');
-                
-                            if (slot.is_available) {
-                                slotElement.onclick = () => bookSlot(slot);
-                            }
-                
-                            grid.appendChild(slotElement);
-                        });
-                
-                        container.appendChild(grid);
-                    }
-                
-                    async function bookSlot(slot) {
-                        if (!currentUser) {
-                            alert('Пользователь не определен');
-                            return;
+                const date = document.getElementById('date-picker').value;
+                if (!date) return;
+
+                try {
+                    const response = await fetch('/api/slots?date=' + date);
+                    if (!response.ok) throw new Error('Network error');
+                    
+                    const slots = await response.json();
+
+                    const container = document.getElementById('slots-container');
+                    container.innerHTML = '<h3>Доступные слоты:</h3>';
+                    
+                    const grid = document.createElement('div');
+                    grid.className = 'slots-grid';
+
+                    const courtSlots = slots
+                        .filter(slot => slot.court_type === currentCourt)
+                        .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
+
+                    courtSlots.forEach(slot => {
+                        const slotElement = document.createElement('div');
+                        slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
+                        slotElement.innerHTML = slot.time_slot.replace('-', '<br>') + 
+                            (slot.is_available ? '<br><small>Свободно</small>' : '<br><small>Занято: ' + slot.booked_by + '</small>');
+
+                        if (slot.is_available) {
+                            slotElement.onclick = () => bookSlot(slot);
                         }
-                
-                        if (!confirm('Записаться на ' + slot.time_slot + '?')) return;
-                
-                        const response = await fetch('/api/book', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                user_id: currentUser.id,
-                                first_name: currentUser.first_name,
-                                court_type: slot.court_type,
-                                date: slot.date,
-                                time_slot: slot.time_slot
-                            })
-                        });
-                
-                        const result = await response.json();
-                        if (result.success) {
-                            alert('Успешно записаны!');
-                            loadSlots();
-                        } else {
-                            alert('Ошибка: ' + result.detail);
-                        }
-                    }
-                
-                    async function loadMyBookings() {
-                        if (!currentUser) {
-                            alert('Пользователь не определен');
-                            return;
-                        }
-                
-                        const response = await fetch('/api/my-bookings?user_id=' + currentUser.id);
-                        const bookings = await response.json();
-                
-                        const container = document.getElementById('bookings-list');
-                        container.innerHTML = '';
-                
-                        if (bookings.length === 0) {
-                            container.innerHTML = '<p>У вас нет активных записей</p>';
-                            return;
-                        }
-                
-                        bookings.forEach(booking => {
-                            const bookingElement = document.createElement('div');
-                            bookingElement.className = 'court';
-                            bookingElement.innerHTML = `
-                                <strong>${booking.date}</strong> ${booking.time_slot.replace('-', ' - ')} 
-                                (${booking.court_type === 'rubber' ? 'Резиновый' : 'Хард'})
-                                <button onclick="cancelBooking(${booking.id})" style="margin-left: 10px;">Отменить</button>
-                            `;
-                            container.appendChild(bookingElement);
-                        });
-                    }
-                
-                    async function cancelBooking(bookingId) {
-                        if (!confirm('Отменить запись?')) return;
-                
-                        const response = await fetch('/api/booking/' + bookingId + '?user_id=' + currentUser.id, {
-                            method: 'DELETE'
-                        });
-                
-                        const result = await response.json();
-                        alert(result.message);
-                        loadMyBookings();
-                    }
-                
-                    // Инициализация
-                    document.addEventListener('DOMContentLoaded', function() {
-                        console.log('🚀 DOM loaded, initializing...');
-                        initTelegramUser();
-                        document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
-                        loadSlots();
+
+                        grid.appendChild(slotElement);
                     });
-                </script>
+
+                    container.appendChild(grid);
+                } catch (error) {
+                    console.error('Error loading slots:', error);
+                    showError('Ошибка загрузки расписания');
+                }
+            }
+
+            async function bookSlot(slot) {
+                if (!currentUser || !isInitialized) {
+                    alert('Приложение не готово');
+                    return;
+                }
+
+                if (!confirm('Записаться на ' + slot.time_slot + '?')) return;
+
+                try {
+                    const response = await fetch('/api/book', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: currentUser.id,
+                            first_name: currentUser.first_name,
+                            court_type: slot.court_type,
+                            date: slot.date,
+                            time_slot: slot.time_slot
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Успешно записаны!');
+                        loadSlots();
+                    } else {
+                        alert('Ошибка: ' + result.detail);
+                    }
+                } catch (error) {
+                    console.error('Error booking slot:', error);
+                    alert('Ошибка при записи');
+                }
+            }
+
+            async function loadMyBookings() {
+                if (!currentUser || !isInitialized) {
+                    alert('Приложение не готово');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/my-bookings?user_id=' + currentUser.id);
+                    const bookings = await response.json();
+
+                    const container = document.getElementById('bookings-list');
+                    container.innerHTML = '';
+
+                    if (bookings.length === 0) {
+                        container.innerHTML = '<p>У вас нет активных записей</p>';
+                        return;
+                    }
+
+                    bookings.forEach(booking => {
+                        const bookingElement = document.createElement('div');
+                        bookingElement.className = 'court';
+                        bookingElement.innerHTML = `
+                            <strong>${booking.date}</strong> ${booking.time_slot.replace('-', ' - ')} 
+                            (${booking.court_type === 'rubber' ? 'Резиновый' : 'Хард'})
+                            <button onclick="cancelBooking(${booking.id})" style="margin-left: 10px;">Отменить</button>
+                        `;
+                        container.appendChild(bookingElement);
+                    });
+                } catch (error) {
+                    console.error('Error loading bookings:', error);
+                    showError('Ошибка загрузки записей');
+                }
+            }
+
+            async function cancelBooking(bookingId) {
+                if (!confirm('Отменить запись?')) return;
+
+                try {
+                    const response = await fetch('/api/booking/' + bookingId + '?user_id=' + currentUser.id, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+                    alert(result.message);
+                    loadMyBookings();
+                } catch (error) {
+                    console.error('Error canceling booking:', error);
+                    alert('Ошибка при отмене записи');
+                }
+            }
+
+            // Инициализация при загрузке
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('📄 DOM loaded');
+                setTimeout(() => {
+                    initializeApp();
+                }, 100);
+            });
+
+            // Резервная инициализация на случай если что-то пошло не так
+            setTimeout(() => {
+                if (!isInitialized) {
+                    console.log('🕒 Backup initialization');
+                    initializeApp();
+                }
+            }, 5000);
+        </script>
     </body>
     </html>
     """
@@ -486,5 +554,3 @@ async def cancel_booking(booking_id: int, user_id: int = Query(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
