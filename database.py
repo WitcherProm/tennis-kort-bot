@@ -1,6 +1,6 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,7 +11,7 @@ class Database:
         self.init_database()
 
     def get_connection(self):
-        conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+        conn = psycopg.connect(self.database_url, row_factory=dict_row)
         return conn
 
     def init_database(self):
