@@ -112,14 +112,24 @@ async def read_root():
         <script>
             let currentCourt = 'rubber';
             let currentUser = null;
-
+        
             // Получаем данные пользователя из Telegram
             function initTelegramUser() {
-                if (window.Telegram && Telegram.WebApp) {
-                    const tg = Telegram.WebApp;
-                    tg.expand(); // Раскрываем на весь экран
+                console.log('Initializing Telegram user...');
+                
+                // Проверяем, что мы в Telegram WebApp
+                if (window.Telegram && window.Telegram.WebApp) {
+                    console.log('Telegram WebApp detected');
+                    const tg = window.Telegram.WebApp;
                     
+                    // Инициализируем WebApp
+                    tg.ready();
+                    tg.expand();
+                    
+                    // Получаем данные пользователя
                     const user = tg.initDataUnsafe?.user;
+                    console.log('Telegram user data:', user);
+                    
                     if (user) {
                         currentUser = {
                             id: user.id,
@@ -133,21 +143,62 @@ async def read_root():
                         document.getElementById('user-name').textContent = userName;
                         document.getElementById('user-info').style.display = 'block';
                         
-                        console.log('User:', currentUser);
+                        console.log('User initialized:', currentUser);
                     } else {
-                        // Если нет данных пользователя
-                        currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Гость' };
-                        document.getElementById('user-name').textContent = 'Гость';
-                        document.getElementById('user-info').style.display = 'block';
+                        // Если нет данных пользователя в initDataUnsafe, пробуем через tg.initData
+                        console.log('No user in initDataUnsafe, trying alternative methods...');
+                        initUserAlternative();
                     }
                 } else {
-                    // Для браузера (разработка)
-                    currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Тестовый Пользователь' };
-                    document.getElementById('user-name').textContent = 'Тестовый Пользователь';
-                    document.getElementById('user-info').style.display = 'block';
+                    // Не в Telegram - используем тестовые данные
+                    console.log('Not in Telegram WebApp, using test data');
+                    initTestUser();
                 }
             }
-
+        
+            function initUserAlternative() {
+                const tg = window.Telegram.WebApp;
+                
+                // Пробуем разные способы получить данные пользователя
+                if (tg.initData) {
+                    try {
+                        // Парсим initData вручную
+                        const params = new URLSearchParams(tg.initData);
+                        const userParam = params.get('user');
+                        if (userParam) {
+                            const userData = JSON.parse(decodeURIComponent(userParam));
+                            currentUser = {
+                                id: userData.id,
+                                first_name: userData.first_name || 'Пользователь',
+                                username: userData.username || '',
+                                last_name: userData.last_name || ''
+                            };
+                            
+                            const userName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
+                            document.getElementById('user-name').textContent = userName;
+                            document.getElementById('user-info').style.display = 'block';
+                            console.log('User from initData:', currentUser);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing initData:', e);
+                    }
+                }
+                
+                // Если все способы не сработали - тестовый пользователь
+                initTestUser();
+            }
+        
+            function initTestUser() {
+                currentUser = { 
+                    id: Math.floor(Math.random() * 1000000), 
+                    first_name: 'Тестовый Пользователь' 
+                };
+                document.getElementById('user-name').textContent = 'Тестовый Пользователь';
+                document.getElementById('user-info').style.display = 'block';
+                console.log('Test user initialized:', currentUser);
+            }
+        
             function showTab(tabName) {
                 // Обновляем активные табы
                 document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -156,12 +207,12 @@ async def read_root():
                 document.getElementById('booking-tab').style.display = 'none';
                 document.getElementById('my-bookings-tab').style.display = 'none';
                 document.getElementById(tabName + '-tab').style.display = 'block';
-
+        
                 if (tabName === 'my-bookings') {
                     loadMyBookings();
                 }
             }
-
+        
             function selectCourt(court) {
                 currentCourt = court;
                 
@@ -172,49 +223,49 @@ async def read_root():
                 
                 loadSlots();
             }
-
+        
             async function loadSlots() {
                 const date = document.getElementById('date-picker').value;
                 if (!date) return;
-
+        
                 const response = await fetch('/api/slots?date=' + date);
                 const slots = await response.json();
-
+        
                 const container = document.getElementById('slots-container');
                 container.innerHTML = '<h3>Доступные слоты:</h3>';
                 
                 const grid = document.createElement('div');
                 grid.className = 'slots-grid';
-
+        
                 // Фильтруем слоты по выбранному корту и сортируем по времени
                 const courtSlots = slots
                     .filter(slot => slot.court_type === currentCourt)
                     .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
-
+        
                 courtSlots.forEach(slot => {
                     const slotElement = document.createElement('div');
                     slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
                     slotElement.innerHTML = slot.time_slot.replace('-', '<br>') + 
                         (slot.is_available ? '<br><small>Свободно</small>' : '<br><small>Занято: ' + slot.booked_by + '</small>');
-
+        
                     if (slot.is_available) {
                         slotElement.onclick = () => bookSlot(slot);
                     }
-
+        
                     grid.appendChild(slotElement);
                 });
-
+        
                 container.appendChild(grid);
             }
-
+        
             async function bookSlot(slot) {
                 if (!currentUser) {
                     alert('Пользователь не определен');
                     return;
                 }
-
+        
                 if (!confirm('Записаться на ' + slot.time_slot + '?')) return;
-
+        
                 const response = await fetch('/api/book', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -226,7 +277,7 @@ async def read_root():
                         time_slot: slot.time_slot
                     })
                 });
-
+        
                 const result = await response.json();
                 if (result.success) {
                     alert('Успешно записаны!');
@@ -235,24 +286,24 @@ async def read_root():
                     alert('Ошибка: ' + result.detail);
                 }
             }
-
+        
             async function loadMyBookings() {
                 if (!currentUser) {
                     alert('Пользователь не определен');
                     return;
                 }
-
+        
                 const response = await fetch('/api/my-bookings?user_id=' + currentUser.id);
                 const bookings = await response.json();
-
+        
                 const container = document.getElementById('bookings-list');
                 container.innerHTML = '';
-
+        
                 if (bookings.length === 0) {
                     container.innerHTML = '<p>У вас нет активных записей</p>';
                     return;
                 }
-
+        
                 bookings.forEach(booking => {
                     const bookingElement = document.createElement('div');
                     bookingElement.className = 'court';
@@ -264,19 +315,19 @@ async def read_root():
                     container.appendChild(bookingElement);
                 });
             }
-
+        
             async function cancelBooking(bookingId) {
                 if (!confirm('Отменить запись?')) return;
-
+        
                 const response = await fetch('/api/booking/' + bookingId + '?user_id=' + currentUser.id, {
                     method: 'DELETE'
                 });
-
+        
                 const result = await response.json();
                 alert(result.message);
                 loadMyBookings();
             }
-
+        
             // Инициализация при загрузке
             document.addEventListener('DOMContentLoaded', function() {
                 initTelegramUser();
@@ -409,3 +460,4 @@ async def cancel_booking(booking_id: int, user_id: int = Query(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
