@@ -38,16 +38,53 @@ async def read_root():
         <style>
             body { font-family: Arial; padding: 20px; }
             .court { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
-            .slot { padding: 10px; margin: 5px; border: 1px solid #ddd; display: inline-block; }
+            .slot { 
+                padding: 10px; 
+                margin: 5px; 
+                border: 1px solid #ddd; 
+                display: inline-block;
+                width: 150px;
+                text-align: center;
+            }
             .available { background: #90EE90; cursor: pointer; }
             .booked { background: #FFB6C1; }
             .tabs { display: flex; margin-bottom: 20px; }
             .tab { padding: 10px; border: 1px solid #ccc; cursor: pointer; }
             .active { background: #007bff; color: white; }
+            .court-buttons { margin: 15px 0; }
+            .court-button { 
+                padding: 10px 20px; 
+                margin: 5px; 
+                border: 2px solid #007bff;
+                background: white;
+                cursor: pointer;
+                border-radius: 5px;
+            }
+            .court-button.active { 
+                background: #007bff; 
+                color: white; 
+            }
+            .slots-grid { 
+                display: grid; 
+                grid-template-columns: repeat(2, 1fr); 
+                gap: 10px; 
+                max-width: 400px;
+            }
+            .user-info {
+                background: #f0f8ff;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 15px;
+                border-left: 4px solid #007bff;
+            }
         </style>
     </head>
     <body>
         <h1>🎾 Запись на теннисный корт</h1>
+        
+        <div id="user-info" class="user-info" style="display:none;">
+            Добро пожаловать, <span id="user-name">Гость</span>!
+        </div>
 
         <div class="tabs">
             <div class="tab active" onclick="showTab('booking')">Записаться</div>
@@ -59,8 +96,10 @@ async def read_root():
             <input type="date" id="date-picker" onchange="loadSlots()">
 
             <h3>Выберите корт:</h3>
-            <button onclick="selectCourt('rubber')">Резиновый</button>
-            <button onclick="selectCourt('hard')">Хард</button>
+            <div class="court-buttons">
+                <button id="court-rubber" class="court-button active" onclick="selectCourt('rubber')">Резиновый</button>
+                <button id="court-hard" class="court-button" onclick="selectCourt('hard')">Хард</button>
+            </div>
 
             <div id="slots-container"></div>
         </div>
@@ -85,20 +124,35 @@ async def read_root():
                         currentUser = {
                             id: user.id,
                             first_name: user.first_name || 'Пользователь',
-                            username: user.username || ''
+                            username: user.username || '',
+                            last_name: user.last_name || ''
                         };
+                        
+                        // Показываем имя пользователя
+                        const userName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
+                        document.getElementById('user-name').textContent = userName;
+                        document.getElementById('user-info').style.display = 'block';
+                        
                         console.log('User:', currentUser);
                     } else {
-                        // Если нет данных пользователя, используем тестовые (для разработки)
+                        // Если нет данных пользователя
                         currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Гость' };
+                        document.getElementById('user-name').textContent = 'Гость';
+                        document.getElementById('user-info').style.display = 'block';
                     }
                 } else {
                     // Для браузера (разработка)
-                    currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Гость' };
+                    currentUser = { id: Math.floor(Math.random() * 1000000), first_name: 'Тестовый Пользователь' };
+                    document.getElementById('user-name').textContent = 'Тестовый Пользователь';
+                    document.getElementById('user-info').style.display = 'block';
                 }
             }
 
             function showTab(tabName) {
+                // Обновляем активные табы
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                event.target.classList.add('active');
+                
                 document.getElementById('booking-tab').style.display = 'none';
                 document.getElementById('my-bookings-tab').style.display = 'none';
                 document.getElementById(tabName + '-tab').style.display = 'block';
@@ -110,6 +164,12 @@ async def read_root():
 
             function selectCourt(court) {
                 currentCourt = court;
+                
+                // Подсвечиваем выбранную кнопку
+                document.getElementById('court-rubber').classList.remove('active');
+                document.getElementById('court-hard').classList.remove('active');
+                document.getElementById('court-' + court).classList.add('active');
+                
                 loadSlots();
             }
 
@@ -122,20 +182,29 @@ async def read_root():
 
                 const container = document.getElementById('slots-container');
                 container.innerHTML = '<h3>Доступные слоты:</h3>';
+                
+                const grid = document.createElement('div');
+                grid.className = 'slots-grid';
 
-                slots.forEach(slot => {
-                    if (slot.court_type === currentCourt) {
-                        const slotElement = document.createElement('div');
-                        slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
-                        slotElement.innerHTML = slot.time_slot + (slot.is_available ? ' - Свободно' : ' - Занято: ' + slot.booked_by);
+                // Фильтруем слоты по выбранному корту и сортируем по времени
+                const courtSlots = slots
+                    .filter(slot => slot.court_type === currentCourt)
+                    .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
 
-                        if (slot.is_available) {
-                            slotElement.onclick = () => bookSlot(slot);
-                        }
+                courtSlots.forEach(slot => {
+                    const slotElement = document.createElement('div');
+                    slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
+                    slotElement.innerHTML = slot.time_slot.replace('-', '<br>') + 
+                        (slot.is_available ? '<br><small>Свободно</small>' : '<br><small>Занято: ' + slot.booked_by + '</small>');
 
-                        container.appendChild(slotElement);
+                    if (slot.is_available) {
+                        slotElement.onclick = () => bookSlot(slot);
                     }
+
+                    grid.appendChild(slotElement);
                 });
+
+                container.appendChild(grid);
             }
 
             async function bookSlot(slot) {
@@ -179,12 +248,18 @@ async def read_root():
                 const container = document.getElementById('bookings-list');
                 container.innerHTML = '';
 
+                if (bookings.length === 0) {
+                    container.innerHTML = '<p>У вас нет активных записей</p>';
+                    return;
+                }
+
                 bookings.forEach(booking => {
                     const bookingElement = document.createElement('div');
                     bookingElement.className = 'court';
                     bookingElement.innerHTML = `
-                        ${booking.date} ${booking.time_slot} (${booking.court_type === 'rubber' ? 'Резиновый' : 'Хард'})
-                        <button onclick="cancelBooking(${booking.id})">Отменить</button>
+                        <strong>${booking.date}</strong> ${booking.time_slot.replace('-', ' - ')} 
+                        (${booking.court_type === 'rubber' ? 'Резиновый' : 'Хард'})
+                        <button onclick="cancelBooking(${booking.id})" style="margin-left: 10px;">Отменить</button>
                     `;
                     container.appendChild(bookingElement);
                 });
