@@ -1,17 +1,17 @@
+import sqlite3
 import os
-import psycopg
-from psycopg.rows import dict_row
-from dotenv import load_dotenv
-
-load_dotenv()
+from datetime import datetime
 
 class Database:
-    def __init__(self):
-        self.database_url = os.getenv('DATABASE_URL')
+    def __init__(self, db_path="/data/tennis_booking.db"):
+        # Используем /data/ который сохраняется между деплоями
+        os.makedirs('/data', exist_ok=True)
+        self.db_path = db_path
         self.init_database()
 
     def get_connection(self):
-        conn = psycopg.connect(self.database_url, row_factory=dict_row)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
         return conn
 
     def init_database(self):
@@ -21,22 +21,22 @@ class Database:
         # Таблица пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
+                user_id INTEGER PRIMARY KEY,
                 first_name TEXT NOT NULL,
                 username TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
         # Таблица записей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
                 court_type TEXT NOT NULL,
                 date TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, date),
                 UNIQUE(court_type, date, time_slot)
             )
