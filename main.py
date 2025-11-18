@@ -113,17 +113,16 @@ async def read_root():
         <script>
             let currentCourt = 'rubber';
             let currentUser = null;
-
+        
             // Получаем данные пользователя из Telegram
             function initTelegramUser() {
                 console.log('Initializing Telegram user...');
                 
-                // Пробуем получить сохранённого пользователя из localStorage
+                // Сначала проверяем, есть ли сохранённый пользователь
                 const savedUser = localStorage.getItem('telegramUser');
                 if (savedUser) {
                     currentUser = JSON.parse(savedUser);
-                    document.getElementById('user-name').textContent = currentUser.first_name;
-                    document.getElementById('user-info').style.display = 'block';
+                    showUserInfo(currentUser);
                     console.log('User from localStorage:', currentUser);
                     return;
                 }
@@ -139,62 +138,76 @@ async def read_root():
                     
                     // Получаем данные пользователя
                     const user = tg.initDataUnsafe?.user;
+                    console.log('Full Telegram initDataUnsafe:', tg.initDataUnsafe);
                     console.log('Telegram user data:', user);
                     
-                    if (user) {
+                    if (user && user.id) {
                         currentUser = {
                             id: user.id,
-                            first_name: user.first_name || 'Пользователь',
+                            first_name: user.first_name || 'Telegram User',
                             username: user.username || '',
-                            last_name: user.last_name || ''
+                            last_name: user.last_name || '',
+                            language_code: user.language_code || '',
+                            is_premium: user.is_premium || false
                         };
                         
                         // Сохраняем пользователя в localStorage
                         localStorage.setItem('telegramUser', JSON.stringify(currentUser));
-                        
-                        // Показываем имя пользователя
-                        const userName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
-                        document.getElementById('user-name').textContent = userName;
-                        document.getElementById('user-info').style.display = 'block';
-                        
-                        console.log('User initialized and saved:', currentUser);
+                        showUserInfo(currentUser);
+                        console.log('Telegram user initialized:', currentUser);
                     } else {
-                        // Если нет данных пользователя, но мы в Telegram WebApp
-                        document.getElementById('user-name').textContent = 'Telegram Пользователь';
-                        document.getElementById('user-info').style.display = 'block';
-                        console.log('No user data in Telegram WebApp');
+                        // Если нет данных пользователя в Telegram
+                        console.log('No user data in Telegram WebApp, using guest mode');
+                        createGuestUser();
                     }
                 } else {
-                    // Не в Telegram - создаём тестового пользователя только если нет сохранённого
-                    if (!savedUser) {
-                        createTestUser();
-                    }
+                    // Не в Telegram - создаём гостевого пользователя
+                    console.log('Not in Telegram WebApp, using guest mode');
+                    createGuestUser();
                 }
             }
-
-            function createTestUser() {
-                // Создаём тестового пользователя только для демонстрации
+        
+            function createGuestUser() {
+                // Создаём гостевого пользователя только если нет сохранённого
+                const savedUser = localStorage.getItem('telegramUser');
+                if (savedUser) {
+                    currentUser = JSON.parse(savedUser);
+                    showUserInfo(currentUser);
+                    return;
+                }
+        
                 currentUser = { 
                     id: Math.floor(Math.random() * 1000000), 
-                    first_name: 'Тестовый Пользователь' 
+                    first_name: 'Гость'
                 };
                 
                 // Сохраняем в localStorage
                 localStorage.setItem('telegramUser', JSON.stringify(currentUser));
-                
-                document.getElementById('user-name').textContent = 'Тестовый Пользователь';
-                document.getElementById('user-info').style.display = 'block';
-                console.log('Test user created:', currentUser);
+                showUserInfo(currentUser);
+                console.log('Guest user created:', currentUser);
             }
-
+        
+            function showUserInfo(user) {
+                const userName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+                document.getElementById('user-name').textContent = userName;
+                document.getElementById('user-info').style.display = 'block';
+                
+                // Добавляем информацию о типе пользователя
+                const userType = user.language_code ? 'Telegram' : 'Гость';
+                console.log(`User type: ${userType}, ID: ${user.id}, Name: ${userName}`);
+            }
+        
             function resetUser() {
                 localStorage.removeItem('telegramUser');
                 currentUser = null;
                 document.getElementById('user-info').style.display = 'none';
-                alert('Данные пользователя сброшены. Перезагрузите страницу.');
-                location.reload();
+                console.log('User data reset, reloading page...');
+                setTimeout(() => {
+                    location.reload();
+                }, 100);
             }
-
+        
+            // Остальные функции без изменений
             function showTab(tabName) {
                 // Обновляем активные табы
                 document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -203,12 +216,12 @@ async def read_root():
                 document.getElementById('booking-tab').style.display = 'none';
                 document.getElementById('my-bookings-tab').style.display = 'none';
                 document.getElementById(tabName + '-tab').style.display = 'block';
-
+        
                 if (tabName === 'my-bookings') {
                     loadMyBookings();
                 }
             }
-
+        
             function selectCourt(court) {
                 currentCourt = court;
                 
@@ -219,49 +232,49 @@ async def read_root():
                 
                 loadSlots();
             }
-
+        
             async function loadSlots() {
                 const date = document.getElementById('date-picker').value;
                 if (!date) return;
-
+        
                 const response = await fetch('/api/slots?date=' + date);
                 const slots = await response.json();
-
+        
                 const container = document.getElementById('slots-container');
                 container.innerHTML = '<h3>Доступные слоты:</h3>';
                 
                 const grid = document.createElement('div');
                 grid.className = 'slots-grid';
-
+        
                 // Фильтруем слоты по выбранному корту и сортируем по времени
                 const courtSlots = slots
                     .filter(slot => slot.court_type === currentCourt)
                     .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
-
+        
                 courtSlots.forEach(slot => {
                     const slotElement = document.createElement('div');
                     slotElement.className = 'slot ' + (slot.is_available ? 'available' : 'booked');
                     slotElement.innerHTML = slot.time_slot.replace('-', '<br>') + 
                         (slot.is_available ? '<br><small>Свободно</small>' : '<br><small>Занято: ' + slot.booked_by + '</small>');
-
+        
                     if (slot.is_available) {
                         slotElement.onclick = () => bookSlot(slot);
                     }
-
+        
                     grid.appendChild(slotElement);
                 });
-
+        
                 container.appendChild(grid);
             }
-
+        
             async function bookSlot(slot) {
                 if (!currentUser) {
                     alert('Пользователь не определен');
                     return;
                 }
-
+        
                 if (!confirm('Записаться на ' + slot.time_slot + '?')) return;
-
+        
                 const response = await fetch('/api/book', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -273,7 +286,7 @@ async def read_root():
                         time_slot: slot.time_slot
                     })
                 });
-
+        
                 const result = await response.json();
                 if (result.success) {
                     alert('Успешно записаны!');
@@ -282,24 +295,24 @@ async def read_root():
                     alert('Ошибка: ' + result.detail);
                 }
             }
-
+        
             async function loadMyBookings() {
                 if (!currentUser) {
                     alert('Пользователь не определен');
                     return;
                 }
-
+        
                 const response = await fetch('/api/my-bookings?user_id=' + currentUser.id);
                 const bookings = await response.json();
-
+        
                 const container = document.getElementById('bookings-list');
                 container.innerHTML = '';
-
+        
                 if (bookings.length === 0) {
                     container.innerHTML = '<p>У вас нет активных записей</p>';
                     return;
                 }
-
+        
                 bookings.forEach(booking => {
                     const bookingElement = document.createElement('div');
                     bookingElement.className = 'court';
@@ -311,21 +324,22 @@ async def read_root():
                     container.appendChild(bookingElement);
                 });
             }
-
+        
             async function cancelBooking(bookingId) {
                 if (!confirm('Отменить запись?')) return;
-
+        
                 const response = await fetch('/api/booking/' + bookingId + '?user_id=' + currentUser.id, {
                     method: 'DELETE'
                 });
-
+        
                 const result = await response.json();
                 alert(result.message);
                 loadMyBookings();
             }
-
+        
             // Инициализация при загрузке
             document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOM loaded, initializing...');
                 initTelegramUser();
                 document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
                 loadSlots();
@@ -456,3 +470,4 @@ async def cancel_booking(booking_id: int, user_id: int = Query(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
